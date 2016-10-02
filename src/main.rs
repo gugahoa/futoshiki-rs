@@ -1,3 +1,8 @@
+use std::error::Error;
+use std::fs::File;
+use std::path::Path;
+use std::io::{BufRead, BufReader};
+
 struct Matrix {
     rows: u32,
     cols: u32,
@@ -29,15 +34,22 @@ impl Matrix {
 fn main() {
     let mut m = Matrix::new(4, 4);
     for i in 0..16 {
-        m.data.push((i as u32,
-                     Box::new(|index: u32| -> i8 {
-            if index == 12 {
-                -1
-            } else {
-                0
-            }
-        })));
+        m.data.push((i as u32, Box::new(|index: u32| -> i8 { 0 })));
     }
 
-    print!("{}", m.get(3, 3).unwrap().0);
+    let path = Path::new("trivial.dat");
+    let mut bufreader = match File::open(&path) {
+        Err(why) => {
+            panic!("Couldn't open file {}: {}",
+                   path.display(),
+                   why.description())
+        }
+        Ok(file) => BufReader::new(file),
+    };
+
+    for line in bufreader.lines() {
+        println!("{}", line.unwrap());
+    }
+
+    println!("{}", m.get(3, 3).unwrap().0);
 }
