@@ -16,7 +16,7 @@ struct Matrix {
     rows: u32,
     cols: u32,
     data: Vec<u32>,
-    mvr: Vec<Vec<u32>>,
+    mvr: HashMap<u32, Vec<u32>>,
     cell_restriction: HashMap<u32, Box<(Fn(u32) -> i8)>>,
 }
 
@@ -26,7 +26,7 @@ impl Matrix {
             rows: rows,
             cols: cols,
             data: Vec::new(),
-            mvr: Vec::new(),
+            mvr: HashMap::new(),
             cell_restriction: HashMap::new(),
         }
     }
@@ -59,7 +59,7 @@ impl Futoshiki for Matrix {
                 continue;
             }
 
-            let index_mvr = &self.mvr[(row + y * self.rows) as usize];
+            let index_mvr = &self.mvr[&(row + y * self.rows)];
             if index_mvr.contains(&value) && index_mvr.len() == 1 {
                 return false;
             }
@@ -70,7 +70,7 @@ impl Futoshiki for Matrix {
                 continue;
             }
 
-            let index_mvr = &self.mvr[(x + col * self.rows) as usize];
+            let index_mvr = &self.mvr[&(x + col * self.rows)];
             if index_mvr.contains(&value) && index_mvr.len() == 1 {
                 return false;
             }
@@ -80,6 +80,10 @@ impl Futoshiki for Matrix {
     }
 
     fn next_index(&self, flag: char) -> Option<(u32, u32)> {
+        if flag == 's' {
+            return Some((0, 0));
+        }
+
         if flag == 'a' {
             match self.data.iter().position(|&x| x == 0) {
                 None => None,
@@ -89,12 +93,12 @@ impl Futoshiki for Matrix {
                 }
             }
         } else {
-            match self.mvr.iter().enumerate().min_by_key(|&(_, value)| value) {
+            match self.mvr
+                .iter()
+                .filter(|&(i, _)| self.data[*i as usize] == 0)
+                .min_by_key(|&(_, value)| value) {
                 None => None,
-                Some((index, _)) => {
-                    let index = index as u32;
-                    Some((index % self.rows, index / self.cols))
-                }
+                Some((index, _)) => Some((*index % self.rows, *index / self.cols)),
             }
         }
     }
@@ -123,7 +127,7 @@ impl Futoshiki for Matrix {
             }
         } else {
             let index = x + y * 4;
-            for possible_num in &self.mvr[index as usize] {
+            for possible_num in &self.mvr[&index] {
                 possible_nums.push(*possible_num);
             }
         }
@@ -178,8 +182,8 @@ fn main() {
         mvr_vec.push(i + 1);
     }
 
-    for _ in 0..matrix_dim * matrix_dim {
-        matrix.mvr.push(mvr_vec.clone());
+    for i in 0..matrix_dim * matrix_dim {
+        matrix.mvr.insert(i, mvr_vec.clone());
     }
 
     let mut count = 0;
@@ -239,7 +243,8 @@ fn main() {
         matrix.cell_restriction.insert(index2, Box::new(x2y2_fn));
     }
 
-    if let Some((start_x, start_y)) = matrix.next_index('c') {
+    if let Some((start_x, start_y)) = matrix.next_index('s') {
+        println!("{} {}", start_x, start_y);
         matrix.solve(start_x, start_y, 'c');
         println!("{:?}", matrix.data);
     };
