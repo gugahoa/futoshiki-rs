@@ -4,6 +4,13 @@ use std::path::Path;
 use std::io::{BufRead, BufReader};
 use std::collections::HashMap;
 
+trait Futoshiki {
+    fn forward_check(&self, x: u32, y: u32, value: u32, flag: char) -> bool;
+
+    fn can_put_num(&self, x: u32, y: u32, num: u32) -> bool;
+    fn solve(&self, x: u32, y: u32, flag: char) -> bool;
+}
+
 struct Matrix {
     rows: u32,
     cols: u32,
@@ -23,7 +30,7 @@ impl Matrix {
         }
     }
 
-    fn get(&self, x: u32, y: u32) -> Option<&u32> {
+    fn get(&self, x: u32, y: u32) -> Option<u32> {
         if x >= self.rows {
             return None;
         }
@@ -32,7 +39,51 @@ impl Matrix {
             return None;
         }
 
-        Some(&self.data[(x + y * self.rows) as usize])
+        Some(self.data[(x + y * self.rows) as usize])
+    }
+}
+
+impl Futoshiki for Matrix {
+    fn forward_check(&self, x: u32, y: u32, value: u32, flag: char) -> bool {
+        if flag == 'a' {
+            return true;
+        }
+
+        for row in 0..self.rows {
+            let index_mvr = &self.mvr[(row + y * self.rows) as usize];
+            if index_mvr.contains(&value) && index_mvr.len() == 1 {
+                return false;
+            }
+        }
+
+        for col in 0..self.cols {
+            let index_mvr = &self.mvr[(x + col * self.rows) as usize];
+            if index_mvr.contains(&value) && index_mvr.len() == 1 {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    fn can_put_num(&self, x: u32, y: u32, num: u32) -> bool {
+        for row in 0..self.rows {
+            if self.get(row, y).unwrap() == num {
+                return false;
+            }
+        }
+
+        for col in 0..self.cols {
+            if self.get(x, col).unwrap() == num {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    fn solve(&self, x: u32, y: u32, flag: char) -> bool {
+        true
     }
 }
 
@@ -127,4 +178,7 @@ fn main() {
         matrix.cell_restriction.insert(index1, Box::new(x1y1_fn));
         matrix.cell_restriction.insert(index2, Box::new(x2y2_fn));
     }
+
+    let cell_6 = &matrix.cell_restriction[&6];
+    println!("{}, {}", cell_6(5), cell_6(10));
 }
