@@ -6,9 +6,10 @@ use std::collections::HashMap;
 
 trait Futoshiki {
     fn forward_check(&self, x: u32, y: u32, value: u32, flag: char) -> bool;
+    fn next_index(&self, flag: char) -> Option<(u32, u32)>;
 
     fn can_put_num(&self, x: u32, y: u32, num: u32) -> bool;
-    fn solve(&self, x: u32, y: u32, flag: char) -> bool;
+    fn solve(&mut self, x: u32, y: u32, flag: char) -> bool;
 }
 
 struct Matrix {
@@ -31,15 +32,19 @@ impl Matrix {
     }
 
     fn get(&self, x: u32, y: u32) -> Option<u32> {
-        if x >= self.rows {
-            return None;
-        }
-
-        if y >= self.cols {
+        if x >= self.rows || y >= self.cols {
             return None;
         }
 
         Some(self.data[(x + y * self.rows) as usize])
+    }
+
+    fn set(&mut self, x: u32, y: u32, value: u32) {
+        if x >= self.rows || y >= self.cols {
+            return;
+        }
+
+        self.data[(x + y * self.rows) as usize] = value;
     }
 }
 
@@ -66,6 +71,26 @@ impl Futoshiki for Matrix {
         return true;
     }
 
+    fn next_index(&self, flag: char) -> Option<(u32, u32)> {
+        if flag == 'a' {
+            match self.data.iter().position(|&x| x == 0) {
+                None => None,
+                Some(index) => {
+                    let index = index as u32;
+                    Some((index % self.rows, index / self.cols))
+                }
+            }
+        } else {
+            match self.mvr.iter().enumerate().min_by_key(|&(_, value)| value) {
+                None => None,
+                Some((index, _)) => {
+                    let index = index as u32;
+                    Some((index % self.rows, index / self.cols))
+                }
+            }
+        }
+    }
+
     fn can_put_num(&self, x: u32, y: u32, num: u32) -> bool {
         for row in 0..self.rows {
             if self.get(row, y).unwrap() == num {
@@ -82,8 +107,25 @@ impl Futoshiki for Matrix {
         return true;
     }
 
-    fn solve(&self, x: u32, y: u32, flag: char) -> bool {
-        true
+    fn solve(&mut self, x: u32, y: u32, flag: char) -> bool {
+        for possible_num in 1..(self.cols + 1) {
+            if self.can_put_num(x, y, possible_num) &&
+               self.forward_check(x, y, possible_num, flag) {
+                self.set(x, y, possible_num);
+
+                match self.next_index(flag) {
+                    None => return true,
+                    Some((next_x, next_y)) => {
+                        if self.solve(next_x, next_y, flag) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        self.set(x, y, 0);
+        return false;
     }
 }
 
@@ -108,8 +150,6 @@ fn main() {
         .map(|s| s.parse::<u32>().unwrap())
         .collect();
 
-    println!("{:?}", u32_values);
-
     let fn_num = u32_values[1];
     let matrix_dim = u32_values[0];
     let mut matrix = Matrix::new(matrix_dim, matrix_dim);
@@ -119,7 +159,9 @@ fn main() {
         mvr_vec.push(i + 1);
     }
 
-    println!("{:?}", mvr_vec);
+    for _ in 0..matrix_dim * matrix_dim {
+        matrix.mvr.push(mvr_vec.clone());
+    }
 
     let mut count = 0;
     for line in bufreader.lines() {
@@ -133,7 +175,6 @@ fn main() {
 
         if count < matrix_dim {
             matrix.data.append(&mut u32_values);
-            matrix.mvr.push(mvr_vec.clone());
             count += 1;
             continue;
         }
@@ -179,6 +220,8 @@ fn main() {
         matrix.cell_restriction.insert(index2, Box::new(x2y2_fn));
     }
 
-    let cell_6 = &matrix.cell_restriction[&6];
-    println!("{}, {}", cell_6(5), cell_6(10));
+    if let Some((start_x, start_y)) = matrix.next_index('c') {
+        matrix.solve(start_x, start_y, 'c');
+        println!("{:?}", matrix.data);
+    };
 }
