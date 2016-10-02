@@ -55,6 +55,10 @@ impl Futoshiki for Matrix {
         }
 
         for row in 0..self.rows {
+            if row == x {
+                continue;
+            }
+
             let index_mvr = &self.mvr[(row + y * self.rows) as usize];
             if index_mvr.contains(&value) && index_mvr.len() == 1 {
                 return false;
@@ -62,6 +66,10 @@ impl Futoshiki for Matrix {
         }
 
         for col in 0..self.cols {
+            if col == y {
+                continue;
+            }
+
             let index_mvr = &self.mvr[(x + col * self.rows) as usize];
             if index_mvr.contains(&value) && index_mvr.len() == 1 {
                 return false;
@@ -93,13 +101,13 @@ impl Futoshiki for Matrix {
 
     fn can_put_num(&self, x: u32, y: u32, num: u32) -> bool {
         for row in 0..self.rows {
-            if self.get(row, y).unwrap() == num {
+            if row != x && self.get(row, y).unwrap() == num {
                 return false;
             }
         }
 
         for col in 0..self.cols {
-            if self.get(x, col).unwrap() == num {
+            if col != y && self.get(x, col).unwrap() == num {
                 return false;
             }
         }
@@ -108,7 +116,19 @@ impl Futoshiki for Matrix {
     }
 
     fn solve(&mut self, x: u32, y: u32, flag: char) -> bool {
-        for possible_num in 1..(self.cols + 1) {
+        let mut possible_nums = Vec::new();
+        if flag == 'a' {
+            for i in 1..(self.cols + 1) {
+                possible_nums.push(i);
+            }
+        } else {
+            let index = x + y * 4;
+            for possible_num in &self.mvr[index as usize] {
+                possible_nums.push(*possible_num);
+            }
+        }
+
+        for possible_num in possible_nums {
             if self.can_put_num(x, y, possible_num) &&
                self.forward_check(x, y, possible_num, flag) {
                 self.set(x, y, possible_num);
@@ -150,7 +170,6 @@ fn main() {
         .map(|s| s.parse::<u32>().unwrap())
         .collect();
 
-    let fn_num = u32_values[1];
     let matrix_dim = u32_values[0];
     let mut matrix = Matrix::new(matrix_dim, matrix_dim);
 
