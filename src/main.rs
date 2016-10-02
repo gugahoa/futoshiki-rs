@@ -31,14 +31,6 @@ impl Matrix {
         }
     }
 
-    fn get(&self, x: u32, y: u32) -> Option<u32> {
-        if x >= self.rows || y >= self.cols {
-            return None;
-        }
-
-        Some(self.data[(x + y * self.rows) as usize])
-    }
-
     fn set(&mut self, x: u32, y: u32, value: u32) {
         if x >= self.rows || y >= self.cols {
             return;
@@ -104,16 +96,32 @@ impl Futoshiki for Matrix {
     }
 
     fn can_put_num(&self, x: u32, y: u32, num: u32) -> bool {
+        let mut index_vec = Vec::new();
         for row in 0..self.rows {
-            if row != x && self.get(row, y).unwrap() == num {
-                return false;
-            }
+            index_vec.push(row + y * self.cols);
         }
 
         for col in 0..self.cols {
-            if col != y && self.get(x, col).unwrap() == num {
+            index_vec.push(x + col * self.cols);
+        }
+
+        for index in index_vec.into_iter().filter(|&i| self.data[i as usize] != 0) {
+            if self.data[index as usize] == num {
                 return false;
             }
+
+            if let Some(fn_restrict) = self.cell_restriction.get(&index) {
+                let check = fn_restrict(x + y * self.cols);
+                if check == 1 {
+                    if self.data[index as usize] < num {
+                        return false;
+                    }
+                } else if check == -1 {
+                    if self.data[index as usize] > num {
+                        return false;
+                    }
+                }
+            };
         }
 
         return true;
@@ -191,8 +199,13 @@ fn main() {
         let mut u32_values: Vec<u32> = line.unwrap()
             .split(" ")
             .map(|s| {
-                s.parse::<u32>()
-                    .unwrap()
+                let v = s.parse::<u32>()
+                    .unwrap();
+                if count >= matrix_dim {
+                    v - 1
+                } else {
+                    v
+                }
             })
             .collect();
 
