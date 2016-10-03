@@ -1,13 +1,11 @@
 use std::io;
-use std::collections::HashMap;
-use std::collections::HashSet;
 
 trait Futoshiki {
-    fn forward_check(&self, r: u32, c: u32, value: u32, flag: char) -> bool;
+    fn forward_check(&self, value: u32, blocking_indexes_vec: &Vec<usize>, flag: char) -> bool;
     fn next_index(&self, flag: char) -> Option<(u32, u32)>;
     fn blocking_indexes(&self, r: u32, c: u32) -> Vec<usize>;
 
-    fn can_put_num(&self, r: u32, c: u32, num: u32) -> bool;
+    fn can_put_num(&self, r: u32, c: u32, num: u32, blocking_indexes_vec: &Vec<usize>) -> bool;
     fn solve(&mut self, r: u32, c: u32, flag: char) -> bool;
 }
 
@@ -15,8 +13,8 @@ struct Matrix {
     rows: u32,
     cols: u32,
     data: Vec<u32>,
-    mvr: Vec<HashSet<u32>>,
-    cell_restriction: HashMap<u32, Box<(Fn(u32) -> i8)>>,
+    mvr: Vec<Vec<u32>>,
+    cell_restriction: Vec<(u8, Box<(Fn(usize) -> i8)>)>,
 }
 
 impl Matrix {
@@ -26,7 +24,7 @@ impl Matrix {
             cols: dim,
             data: Vec::new(),
             mvr: Vec::new(),
-            cell_restriction: HashMap::new(),
+            cell_restriction: Vec::new(),
         }
     }
 
@@ -61,15 +59,17 @@ impl Futoshiki for Matrix {
         indexes
     }
 
-    fn forward_check(&self, r: u32, c: u32, value: u32, flag: char) -> bool {
+    fn forward_check(&self, value: u32, blocking_indexes_vec: &Vec<usize>, flag: char) -> bool {
         if flag == 'a' {
             return true;
         }
 
-        for index in self.blocking_indexes(r, c)
-            .into_iter()
-            .filter(|&i| self.data[i] == 0) {
-            let index_mvr = &self.mvr[index];
+        for index in blocking_indexes_vec {
+            if self.data[*index] == 0 {
+                continue;
+            }
+
+            let index_mvr = &self.mvr[*index];
             if index_mvr.contains(&value) && index_mvr.len() == 1 {
                 return false;
             }
@@ -79,10 +79,6 @@ impl Futoshiki for Matrix {
     }
 
     fn next_index(&self, flag: char) -> Option<(u32, u32)> {
-        if flag == 's' {
-            return Some((0, 0));
-        }
-
         if flag == 'a' {
             match self.data.iter().position(|&x| x == 0) {
                 None => None,
@@ -106,22 +102,26 @@ impl Futoshiki for Matrix {
         }
     }
 
-    fn can_put_num(&self, r: u32, c: u32, num: u32) -> bool {
-        for index in self.blocking_indexes(r, c)
-            .into_iter()
-            .filter(|&i| self.data[i] != 0) {
+    fn can_put_num(&self, r: u32, c: u32, num: u32, blocking_indexes_vec: &Vec<usize>) -> bool {
+        for index in blocking_indexes_vec {
+            let index = *index;
+            if self.data[index] == 0 {
+                continue;
+            }
+
             if self.data[index] == num {
                 return false;
             }
 
-            if let Some(fn_restrict) = self.cell_restriction.get(&(index as u32)) {
-                let check = fn_restrict(c + r * self.cols);
-                if check == 1 && self.data[index as usize] > num {
+            let (valid, ref fn_restrict) = self.cell_restriction[index];
+            if valid == 1 {
+                let check = fn_restrict((c + r * self.cols) as usize);
+                if check == 1 && self.data[index] > num {
                     return false;
-                } else if check == -1 && self.data[index as usize] < num {
+                } else if check == -1 && self.data[index] < num {
                     return false;
                 }
-            };
+            }
         }
 
         return true;
@@ -136,16 +136,23 @@ impl Futoshiki for Matrix {
             }
         } else {
             let index = c + r * self.cols;
-            possible_nums = self.mvr[index as usize].iter().cloned().collect::<Vec<u32>>();
+            possible_nums = self.mvr[index as usize].clone();
         }
 
         for possible_num in possible_nums {
-            if self.can_put_num(r, c, possible_num) &&
-               self.forward_check(r, c, possible_num, flag) {
+            let blocking_indexes_vec = self.blocking_indexes(r, c);
+            if self.can_put_num(r, c, possible_num, &blocking_indexes_vec) &&
+               self.forward_check(possible_num, &blocking_indexes_vec, flag) {
                 self.set(r, c, possible_num);
+                let mut removed_stack = Vec::new();
                 if flag == 'c' {
-                    for index in self.blocking_indexes(r, c) {
-                        self.mvr[index].remove(&possible_num);
+                    for index in &blocking_indexes_vec {
+                        if let Some(possible_num_index) = self.mvr[*index]
+                            .iter()
+                            .position(|&x| x == possible_num) {
+                            removed_stack.push(*index);
+                            self.mvr[*index].swap_remove(possible_num_index);
+                        };
                     }
                 }
 
@@ -159,8 +166,8 @@ impl Futoshiki for Matrix {
                 }
 
                 if flag == 'c' {
-                    for index in self.blocking_indexes(r, c) {
-                        self.mvr[index].insert(possible_num);
+                    for index in removed_stack {
+                        self.mvr[index].push(possible_num);
                     }
                 }
             }
@@ -171,12 +178,14 @@ impl Futoshiki for Matrix {
     }
 }
 
-fn restriction_func(maybe_old_f: Option<Box<(Fn(u32) -> i8)>>,
-                    cell: u32,
+fn restriction_func(maybe_old_f: (u8, Box<(Fn(usize) -> i8)>),
+                    cell: usize,
                     value: i8)
-                    -> Box<(Fn(u32) -> i8)> {
-    Box::new(move |index| -> i8 {
-        if let Some(ref old_f) = maybe_old_f {
+                    -> Box<(Fn(usize) -> i8)> {
+
+    let (valid, old_f) = maybe_old_f;
+    Box::new(move |index: usize| -> i8 {
+        if valid == 1 {
             let ret = old_f(index);
             if ret != 0 {
                 return ret;
@@ -214,14 +223,16 @@ fn main() {
         let restrictions = first_line[1];
 
         let mut matrix = Matrix::new(matrix_dim);
-        let mvr_vec = (1..matrix_dim + 1).collect::<HashSet<u32>>();
-        for _ in 0..(matrix_dim * matrix_dim) {
-            matrix.mvr.push(mvr_vec.clone());
-        }
+        let mvr_vec = (1..matrix_dim + 1).collect::<Vec<u32>>();
 
-        for _ in 0..matrix_dim {
-            let mut row = u32_values(line_or_panic());
-            matrix.data.append(&mut row);
+        for i in 0..(matrix_dim * matrix_dim) {
+            if i < matrix_dim {
+                let mut row = u32_values(line_or_panic());
+                matrix.data.append(&mut row);
+            }
+
+            matrix.mvr.push(mvr_vec.clone());
+            matrix.cell_restriction.push((0, Box::new(|_: usize| -> i8 { 0 })));
         }
 
         for _ in 0..restrictions {
@@ -230,17 +241,20 @@ fn main() {
             let (r1, c1) = (restriction[0] - 1, restriction[1] - 1);
             let (r2, c2) = (restriction[2] - 1, restriction[3] - 1);
 
-            let index1 = c1 + r1 * matrix_dim;
-            let index2 = c2 + r2 * matrix_dim;
+            let index1 = (c1 + r1 * matrix_dim) as usize;
+            let index2 = (c2 + r2 * matrix_dim) as usize;
 
-            let maybe_old_f1 = matrix.cell_restriction.remove(&index1);
-            let maybe_old_f2 = matrix.cell_restriction.remove(&index2);
+            let index_max = std::cmp::max(index1, index2);
+            let index_min = std::cmp::min(index1, index2);
 
-            let r1c1_fn = restriction_func(maybe_old_f1, index2, 1);
-            let r2c2_fn = restriction_func(maybe_old_f2, index1, -1);
+            let old_f1 = matrix.cell_restriction.remove(index_max);
+            let old_f2 = matrix.cell_restriction.remove(index_min);
 
-            matrix.cell_restriction.insert(index1, r1c1_fn);
-            matrix.cell_restriction.insert(index2, r2c2_fn);
+            let index_min_fn = restriction_func(old_f1, index_min, 1);
+            let index_max_fn = restriction_func(old_f2, index_max, -1);
+
+            matrix.cell_restriction.insert(index_min, (1, index_min_fn));
+            matrix.cell_restriction.insert(index_max, (1, index_max_fn));
         }
 
         // consume \n at the end of each case
