@@ -5,11 +5,12 @@ use std::io::{BufRead, BufReader};
 use std::collections::HashMap;
 
 trait Futoshiki {
-    fn forward_check(&self, x: u32, y: u32, value: u32, flag: char) -> bool;
+    fn forward_check(&self, r: u32, c: u32, value: u32, flag: char) -> bool;
     fn next_index(&self, flag: char) -> Option<(u32, u32)>;
+    fn blocking_indexes(&self, r: u32, c: u32) -> Vec<u32>;
 
-    fn can_put_num(&self, x: u32, y: u32, num: u32) -> bool;
-    fn solve(&mut self, x: u32, y: u32, flag: char) -> bool;
+    fn can_put_num(&self, r: u32, c: u32, num: u32) -> bool;
+    fn solve(&mut self, r: u32, c: u32, flag: char) -> bool;
 }
 
 struct Matrix {
@@ -31,38 +32,46 @@ impl Matrix {
         }
     }
 
-    fn set(&mut self, x: u32, y: u32, value: u32) {
-        if x >= self.rows || y >= self.cols {
+    fn set(&mut self, r: u32, c: u32, value: u32) {
+        if r >= self.rows || c >= self.cols {
             return;
         }
 
-        self.data[(x + y * self.rows) as usize] = value;
+        self.data[(c + r * self.rows) as usize] = value;
     }
 }
 
 impl Futoshiki for Matrix {
-    fn forward_check(&self, x: u32, y: u32, value: u32, flag: char) -> bool {
+    fn blocking_indexes(&self, row: u32, col: u32) -> Vec<u32> {
+        let mut indexes: Vec<u32> = Vec::new();
+        for r in 0..self.rows {
+            if r == row {
+                continue;
+            }
+
+            indexes.push(col + r * self.cols);
+        }
+
+        for c in 0..self.cols {
+            if c == col {
+                continue;
+            }
+
+            indexes.push(c + row * self.cols);
+        }
+
+        indexes
+    }
+
+    fn forward_check(&self, r: u32, c: u32, value: u32, flag: char) -> bool {
         if flag == 'a' {
             return true;
         }
 
-        for row in 0..self.rows {
-            if row == x {
-                continue;
-            }
-
-            let index_mvr = &self.mvr[&(row + y * self.rows)];
-            if index_mvr.contains(&value) && index_mvr.len() == 1 {
-                return false;
-            }
-        }
-
-        for col in 0..self.cols {
-            if col == y {
-                continue;
-            }
-
-            let index_mvr = &self.mvr[&(x + col * self.rows)];
+        for index in self.blocking_indexes(r, c)
+            .into_iter()
+            .filter(|&i| self.data[i as usize] == 0) {
+            let index_mvr = &self.mvr[&index];
             if index_mvr.contains(&value) && index_mvr.len() == 1 {
                 return false;
             }
@@ -81,7 +90,7 @@ impl Futoshiki for Matrix {
                 None => None,
                 Some(index) => {
                     let index = index as u32;
-                    Some((index % self.rows, index / self.cols))
+                    Some((index / self.rows, index % self.cols))
                 }
             }
         } else {
@@ -90,36 +99,25 @@ impl Futoshiki for Matrix {
                 .filter(|&(i, _)| self.data[*i as usize] == 0)
                 .min_by_key(|&(_, value)| value) {
                 None => None,
-                Some((index, _)) => Some((*index % self.rows, *index / self.cols)),
+                Some((&index, _)) => Some((index / self.rows, index % self.cols)),
             }
         }
     }
 
-    fn can_put_num(&self, x: u32, y: u32, num: u32) -> bool {
-        let mut index_vec = Vec::new();
-        for row in 0..self.rows {
-            index_vec.push(row + y * self.cols);
-        }
-
-        for col in 0..self.cols {
-            index_vec.push(x + col * self.cols);
-        }
-
-        for index in index_vec.into_iter().filter(|&i| self.data[i as usize] != 0) {
+    fn can_put_num(&self, r: u32, c: u32, num: u32) -> bool {
+        for index in self.blocking_indexes(r, c)
+            .into_iter()
+            .filter(|&i| self.data[i as usize] != 0) {
             if self.data[index as usize] == num {
                 return false;
             }
 
             if let Some(fn_restrict) = self.cell_restriction.get(&index) {
-                let check = fn_restrict(x + y * self.cols);
-                if check == 1 {
-                    if self.data[index as usize] < num {
-                        return false;
-                    }
-                } else if check == -1 {
-                    if self.data[index as usize] > num {
-                        return false;
-                    }
+                let check = fn_restrict(c + r * self.cols);
+                if check == 1 && self.data[index as usize] > num {
+                    return false;
+                } else if check == -1 && self.data[index as usize] < num {
+                    return false;
                 }
             };
         }
@@ -127,28 +125,26 @@ impl Futoshiki for Matrix {
         return true;
     }
 
-    fn solve(&mut self, x: u32, y: u32, flag: char) -> bool {
+    fn solve(&mut self, r: u32, c: u32, flag: char) -> bool {
         let mut possible_nums = Vec::new();
         if flag == 'a' {
             for i in 1..(self.cols + 1) {
                 possible_nums.push(i);
             }
         } else {
-            let index = x + y * 4;
-            for possible_num in &self.mvr[&index] {
-                possible_nums.push(*possible_num);
-            }
+            let index = c + r * self.cols;
+            possible_nums.append(&mut self.mvr[&index].clone());
         }
 
         for possible_num in possible_nums {
-            if self.can_put_num(x, y, possible_num) &&
-               self.forward_check(x, y, possible_num, flag) {
-                self.set(x, y, possible_num);
+            if self.can_put_num(r, c, possible_num) &&
+               self.forward_check(r, c, possible_num, flag) {
+                self.set(r, c, possible_num);
 
                 match self.next_index(flag) {
                     None => return true,
-                    Some((next_x, next_y)) => {
-                        if self.solve(next_x, next_y, flag) {
+                    Some((next_r, next_c)) => {
+                        if self.solve(next_r, next_c, flag) {
                             return true;
                         }
                     }
@@ -156,7 +152,7 @@ impl Futoshiki for Matrix {
             }
         }
 
-        self.set(x, y, 0);
+        self.set(r, c, 0);
         return false;
     }
 }
@@ -190,7 +186,7 @@ fn main() {
         mvr_vec.push(i + 1);
     }
 
-    for i in 0..matrix_dim * matrix_dim {
+    for i in 0..(matrix_dim * matrix_dim) {
         matrix.mvr.insert(i, mvr_vec.clone());
     }
 
@@ -215,15 +211,15 @@ fn main() {
             continue;
         }
 
-        let (x1, y1) = (u32_values[0], u32_values[1]);
-        let (x2, y2) = (u32_values[2], u32_values[3]);
+        let (r1, c1) = (u32_values[0], u32_values[1]);
+        let (r2, c2) = (u32_values[2], u32_values[3]);
 
-        let index1 = x1 + y1 * matrix_dim;
-        let index2 = x2 + y2 * matrix_dim;
+        let index1 = c1 + r1 * matrix_dim;
+        let index2 = c2 + r2 * matrix_dim;
 
         let maybe_old_f1 = matrix.cell_restriction.remove(&index1);
         let maybe_old_f2 = matrix.cell_restriction.remove(&index2);
-        let x1y1_fn = move |index| -> i8 {
+        let r1c1_fn = move |index| -> i8 {
             if let Some(ref old_f1) = maybe_old_f1 {
                 let ret = old_f1(index);
                 if ret != 0 {
@@ -237,7 +233,7 @@ fn main() {
                 0
             }
         };
-        let x2y2_fn = move |index| -> i8 {
+        let r2c2_fn = move |index| -> i8 {
             if let Some(ref old_f2) = maybe_old_f2 {
                 let ret = old_f2(index);
                 if ret != 0 {
@@ -252,13 +248,18 @@ fn main() {
             }
         };
 
-        matrix.cell_restriction.insert(index1, Box::new(x1y1_fn));
-        matrix.cell_restriction.insert(index2, Box::new(x2y2_fn));
+        matrix.cell_restriction.insert(index1, Box::new(r1c1_fn));
+        matrix.cell_restriction.insert(index2, Box::new(r2c2_fn));
     }
 
-    if let Some((start_x, start_y)) = matrix.next_index('s') {
-        println!("{} {}", start_x, start_y);
-        matrix.solve(start_x, start_y, 'c');
-        println!("{:?}", matrix.data);
+    if let Some((start_r, start_c)) = matrix.next_index('s') {
+        matrix.solve(start_r, start_c, 'c');
+        for (i, num) in matrix.data.iter().enumerate() {
+            if (i as u32) % matrix_dim == 0 && i != 0 {
+                print!("\n");
+            }
+            print!("{} ", num);
+        }
     };
+    println!("");
 }
