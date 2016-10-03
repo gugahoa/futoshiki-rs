@@ -1,10 +1,11 @@
 use std::io;
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 trait Futoshiki {
     fn forward_check(&self, r: u32, c: u32, value: u32, flag: char) -> bool;
     fn next_index(&self, flag: char) -> Option<(u32, u32)>;
-    fn blocking_indexes(&self, r: u32, c: u32) -> Vec<u32>;
+    fn blocking_indexes(&self, r: u32, c: u32) -> Vec<usize>;
 
     fn can_put_num(&self, r: u32, c: u32, num: u32) -> bool;
     fn solve(&mut self, r: u32, c: u32, flag: char) -> bool;
@@ -14,7 +15,7 @@ struct Matrix {
     rows: u32,
     cols: u32,
     data: Vec<u32>,
-    mvr: HashMap<u32, Vec<u32>>,
+    mvr: Vec<HashSet<u32>>,
     cell_restriction: HashMap<u32, Box<(Fn(u32) -> i8)>>,
 }
 
@@ -24,7 +25,7 @@ impl Matrix {
             rows: dim,
             cols: dim,
             data: Vec::new(),
-            mvr: HashMap::new(),
+            mvr: Vec::new(),
             cell_restriction: HashMap::new(),
         }
     }
@@ -39,14 +40,14 @@ impl Matrix {
 }
 
 impl Futoshiki for Matrix {
-    fn blocking_indexes(&self, row: u32, col: u32) -> Vec<u32> {
-        let mut indexes: Vec<u32> = Vec::new();
+    fn blocking_indexes(&self, row: u32, col: u32) -> Vec<usize> {
+        let mut indexes: Vec<usize> = Vec::new();
         for r in 0..self.rows {
             if r == row {
                 continue;
             }
 
-            indexes.push(col + r * self.cols);
+            indexes.push((col + r * self.cols) as usize);
         }
 
         for c in 0..self.cols {
@@ -54,7 +55,7 @@ impl Futoshiki for Matrix {
                 continue;
             }
 
-            indexes.push(c + row * self.cols);
+            indexes.push((c + row * self.cols) as usize);
         }
 
         indexes
@@ -67,8 +68,8 @@ impl Futoshiki for Matrix {
 
         for index in self.blocking_indexes(r, c)
             .into_iter()
-            .filter(|&i| self.data[i as usize] == 0) {
-            let index_mvr = &self.mvr[&index];
+            .filter(|&i| self.data[i] == 0) {
+            let index_mvr = &self.mvr[index];
             if index_mvr.contains(&value) && index_mvr.len() == 1 {
                 return false;
             }
@@ -93,10 +94,14 @@ impl Futoshiki for Matrix {
         } else {
             match self.mvr
                 .iter()
-                .filter(|&(i, _)| self.data[*i as usize] == 0)
-                .min_by_key(|&(_, value)| value) {
+                .enumerate()
+                .filter(|&(index, _)| self.data[index] == 0)
+                .min_by_key(|&(_, v)| v.len()) {
                 None => None,
-                Some((&index, _)) => Some((index / self.rows, index % self.cols)),
+                Some((index, _)) => {
+                    let index = index as u32;
+                    Some((index / self.rows, index % self.cols))
+                }
             }
         }
     }
@@ -104,12 +109,12 @@ impl Futoshiki for Matrix {
     fn can_put_num(&self, r: u32, c: u32, num: u32) -> bool {
         for index in self.blocking_indexes(r, c)
             .into_iter()
-            .filter(|&i| self.data[i as usize] != 0) {
-            if self.data[index as usize] == num {
+            .filter(|&i| self.data[i] != 0) {
+            if self.data[index] == num {
                 return false;
             }
 
-            if let Some(fn_restrict) = self.cell_restriction.get(&index) {
+            if let Some(fn_restrict) = self.cell_restriction.get(&(index as u32)) {
                 let check = fn_restrict(c + r * self.cols);
                 if check == 1 && self.data[index as usize] > num {
                     return false;
@@ -123,20 +128,26 @@ impl Futoshiki for Matrix {
     }
 
     fn solve(&mut self, r: u32, c: u32, flag: char) -> bool {
-        let mut possible_nums = Vec::new();
+        let mut possible_nums;
         if flag == 'a' {
+            possible_nums = Vec::new();
             for i in 1..(self.cols + 1) {
                 possible_nums.push(i);
             }
         } else {
             let index = c + r * self.cols;
-            possible_nums.append(&mut self.mvr[&index].clone());
+            possible_nums = self.mvr[index as usize].iter().cloned().collect::<Vec<u32>>();
         }
 
         for possible_num in possible_nums {
             if self.can_put_num(r, c, possible_num) &&
                self.forward_check(r, c, possible_num, flag) {
                 self.set(r, c, possible_num);
+                if flag == 'c' {
+                    for index in self.blocking_indexes(r, c) {
+                        self.mvr[index].remove(&possible_num);
+                    }
+                }
 
                 match self.next_index(flag) {
                     None => return true,
@@ -144,6 +155,12 @@ impl Futoshiki for Matrix {
                         if self.solve(next_r, next_c, flag) {
                             return true;
                         }
+                    }
+                }
+
+                if flag == 'c' {
+                    for index in self.blocking_indexes(r, c) {
+                        self.mvr[index].insert(possible_num);
                     }
                 }
             }
@@ -184,22 +201,22 @@ fn main() {
         String::from(line.trim())
     };
 
+    let u32_values = |line: String| -> Vec<u32> {
+        line.trim().split(" ").map(|s| s.parse::<u32>().unwrap_or(0)).collect::<Vec<u32>>()
+    };
+
     let n_cases_line = line_or_panic();
     let test_cases = n_cases_line.parse::<u32>().unwrap_or(0);
     println!("{}", n_cases_line);
     for _ in 0..test_cases {
-        let u32_values = |line: String| -> Vec<u32> {
-            line.trim().split(" ").map(|s| s.parse::<u32>().unwrap_or(0)).collect::<Vec<u32>>()
-        };
-
         let first_line = u32_values(line_or_panic());
         let matrix_dim = first_line[0];
         let restrictions = first_line[1];
 
         let mut matrix = Matrix::new(matrix_dim);
-        let mvr_vec = (1..matrix_dim + 1).collect::<Vec<u32>>();
-        for i in 0..(matrix_dim * matrix_dim) {
-            matrix.mvr.insert(i, mvr_vec.clone());
+        let mvr_vec = (1..matrix_dim + 1).collect::<HashSet<u32>>();
+        for _ in 0..(matrix_dim * matrix_dim) {
+            matrix.mvr.push(mvr_vec.clone());
         }
 
         for _ in 0..matrix_dim {
