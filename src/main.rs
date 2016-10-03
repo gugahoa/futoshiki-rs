@@ -154,6 +154,26 @@ impl Futoshiki for Matrix {
     }
 }
 
+fn restriction_func(maybe_old_f: Option<Box<(Fn(u32) -> i8)>>,
+                    cell: u32,
+                    value: i8)
+                    -> Box<(Fn(u32) -> i8)> {
+    Box::new(move |index| -> i8 {
+        if let Some(ref old_f) = maybe_old_f {
+            let ret = old_f(index);
+            if ret != 0 {
+                return ret;
+            }
+        }
+
+        if index == cell {
+            value
+        } else {
+            0
+        }
+    })
+}
+
 fn main() {
     let line_or_panic = || -> String {
         let mut line = String::new();
@@ -198,37 +218,12 @@ fn main() {
 
             let maybe_old_f1 = matrix.cell_restriction.remove(&index1);
             let maybe_old_f2 = matrix.cell_restriction.remove(&index2);
-            let r1c1_fn = move |index| -> i8 {
-                if let Some(ref old_f1) = maybe_old_f1 {
-                    let ret = old_f1(index);
-                    if ret != 0 {
-                        return ret;
-                    }
-                }
 
-                if index == index2 {
-                    1
-                } else {
-                    0
-                }
-            };
-            let r2c2_fn = move |index| -> i8 {
-                if let Some(ref old_f2) = maybe_old_f2 {
-                    let ret = old_f2(index);
-                    if ret != 0 {
-                        return ret;
-                    }
-                }
+            let r1c1_fn = restriction_func(maybe_old_f1, index2, 1);
+            let r2c2_fn = restriction_func(maybe_old_f2, index1, -1);
 
-                if index == index1 {
-                    -1
-                } else {
-                    0
-                }
-            };
-
-            matrix.cell_restriction.insert(index1, Box::new(r1c1_fn));
-            matrix.cell_restriction.insert(index2, Box::new(r2c2_fn));
+            matrix.cell_restriction.insert(index1, r1c1_fn);
+            matrix.cell_restriction.insert(index2, r2c2_fn);
         }
 
         // consume \n at the end of each case
