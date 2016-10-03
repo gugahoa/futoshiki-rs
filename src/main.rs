@@ -1,7 +1,4 @@
-use std::error::Error;
-use std::fs::File;
-use std::path::Path;
-use std::io::{BufRead, BufReader};
+use std::io;
 use std::collections::HashMap;
 
 trait Futoshiki {
@@ -22,10 +19,10 @@ struct Matrix {
 }
 
 impl Matrix {
-    fn new(rows: u32, cols: u32) -> Matrix {
+    fn new(dim: u32) -> Matrix {
         Matrix {
-            rows: rows,
-            cols: cols,
+            rows: dim,
+            cols: dim,
             data: Vec::new(),
             mvr: HashMap::new(),
             cell_restriction: HashMap::new(),
@@ -158,108 +155,93 @@ impl Futoshiki for Matrix {
 }
 
 fn main() {
-    let path = Path::new("trivial.dat");
-    let mut bufreader = match File::open(&path) {
-        Err(why) => {
-            panic!("Couldn't open file {}: {}",
-                   path.display(),
-                   why.description())
+    let line_or_panic = || -> String {
+        let mut line = String::new();
+        if let Err(error) = io::stdin().read_line(&mut line) {
+            panic!("Couldn't read line. Error: {}", error);
         }
-        Ok(file) => BufReader::new(file),
+
+        String::from(line.trim())
     };
-    let mut first_line = String::new();
-    match bufreader.read_line(&mut first_line) {
-        Err(why) => panic!("Couldn't read line: {}", why.description()),
-        _ => {}
-    }
 
-    let u32_values: Vec<u32> = first_line.trim()
-        .split(" ")
-        .map(|s| s.parse::<u32>().unwrap())
-        .collect();
+    let n_cases_line = line_or_panic();
+    let test_cases = n_cases_line.parse::<u32>().unwrap_or(0);
+    println!("{}", n_cases_line);
+    for _ in 0..test_cases {
+        let u32_values = |line: String| -> Vec<u32> {
+            line.trim().split(" ").map(|s| s.parse::<u32>().unwrap_or(0)).collect::<Vec<u32>>()
+        };
 
-    let matrix_dim = u32_values[0];
-    let mut matrix = Matrix::new(matrix_dim, matrix_dim);
+        let first_line = u32_values(line_or_panic());
+        let matrix_dim = first_line[0];
+        let restrictions = first_line[1];
 
-    let mut mvr_vec: Vec<u32> = Vec::new();
-    for i in 0..matrix_dim {
-        mvr_vec.push(i + 1);
-    }
-
-    for i in 0..(matrix_dim * matrix_dim) {
-        matrix.mvr.insert(i, mvr_vec.clone());
-    }
-
-    let mut count = 0;
-    for line in bufreader.lines() {
-        let mut u32_values: Vec<u32> = line.unwrap()
-            .split(" ")
-            .map(|s| {
-                let v = s.parse::<u32>()
-                    .unwrap();
-                if count >= matrix_dim {
-                    v - 1
-                } else {
-                    v
-                }
-            })
-            .collect();
-
-        if count < matrix_dim {
-            matrix.data.append(&mut u32_values);
-            count += 1;
-            continue;
+        let mut matrix = Matrix::new(matrix_dim);
+        let mvr_vec = (1..matrix_dim + 1).collect::<Vec<u32>>();
+        for i in 0..(matrix_dim * matrix_dim) {
+            matrix.mvr.insert(i, mvr_vec.clone());
         }
 
-        let (r1, c1) = (u32_values[0], u32_values[1]);
-        let (r2, c2) = (u32_values[2], u32_values[3]);
+        for _ in 0..matrix_dim {
+            let mut row = u32_values(line_or_panic());
+            matrix.data.append(&mut row);
+        }
 
-        let index1 = c1 + r1 * matrix_dim;
-        let index2 = c2 + r2 * matrix_dim;
+        for _ in 0..restrictions {
+            let restriction = u32_values(line_or_panic());
 
-        let maybe_old_f1 = matrix.cell_restriction.remove(&index1);
-        let maybe_old_f2 = matrix.cell_restriction.remove(&index2);
-        let r1c1_fn = move |index| -> i8 {
-            if let Some(ref old_f1) = maybe_old_f1 {
-                let ret = old_f1(index);
-                if ret != 0 {
-                    return ret;
+            let (r1, c1) = (restriction[0] - 1, restriction[1] - 1);
+            let (r2, c2) = (restriction[2] - 1, restriction[3] - 1);
+
+            let index1 = c1 + r1 * matrix_dim;
+            let index2 = c2 + r2 * matrix_dim;
+
+            let maybe_old_f1 = matrix.cell_restriction.remove(&index1);
+            let maybe_old_f2 = matrix.cell_restriction.remove(&index2);
+            let r1c1_fn = move |index| -> i8 {
+                if let Some(ref old_f1) = maybe_old_f1 {
+                    let ret = old_f1(index);
+                    if ret != 0 {
+                        return ret;
+                    }
                 }
-            }
 
-            if index == index2 {
-                1
-            } else {
-                0
-            }
-        };
-        let r2c2_fn = move |index| -> i8 {
-            if let Some(ref old_f2) = maybe_old_f2 {
-                let ret = old_f2(index);
-                if ret != 0 {
-                    return ret;
+                if index == index2 {
+                    1
+                } else {
+                    0
                 }
-            }
+            };
+            let r2c2_fn = move |index| -> i8 {
+                if let Some(ref old_f2) = maybe_old_f2 {
+                    let ret = old_f2(index);
+                    if ret != 0 {
+                        return ret;
+                    }
+                }
 
-            if index == index1 {
-                -1
-            } else {
-                0
-            }
-        };
+                if index == index1 {
+                    -1
+                } else {
+                    0
+                }
+            };
 
-        matrix.cell_restriction.insert(index1, Box::new(r1c1_fn));
-        matrix.cell_restriction.insert(index2, Box::new(r2c2_fn));
-    }
+            matrix.cell_restriction.insert(index1, Box::new(r1c1_fn));
+            matrix.cell_restriction.insert(index2, Box::new(r2c2_fn));
+        }
 
-    if let Some((start_r, start_c)) = matrix.next_index('s') {
-        matrix.solve(start_r, start_c, 'c');
-        for (i, num) in matrix.data.iter().enumerate() {
+        // consume \n at the end of each case
+        line_or_panic();
+
+        matrix.solve(0, 0, 'c');
+        for (i, num) in matrix.data.into_iter().enumerate() {
             if (i as u32) % matrix_dim == 0 && i != 0 {
                 print!("\n");
             }
+
             print!("{} ", num);
         }
-    };
-    println!("");
+        println!("\n");
+    }
 }
