@@ -1,10 +1,10 @@
 use std::io;
 
 trait Futoshiki {
-    fn forward_check(&self, value: u32, blocking_indexes_vec: &Vec<usize>, flag: char) -> bool;
-    fn next_index(&self, flag: char) -> Option<(u32, u32)>;
     fn blocking_indexes(&self, r: u32, c: u32) -> Vec<usize>;
+    fn next_index(&self, flag: char) -> Option<(u32, u32)>;
 
+    fn forward_check(&self, value: u32, blocking_indexes_vec: &Vec<usize>, flag: char) -> bool;
     fn can_put_num(&self, r: u32, c: u32, num: u32, blocking_indexes_vec: &Vec<usize>) -> bool;
     fn solve(&mut self, r: u32, c: u32, flag: char) -> bool;
 }
@@ -15,6 +15,7 @@ struct Matrix {
     data: Vec<u32>,
     mvr: Vec<Vec<u32>>,
     cell_restriction: Vec<(u8, Box<(Fn(usize) -> i8)>)>,
+    attributions: u64,
 }
 
 impl Matrix {
@@ -25,15 +26,13 @@ impl Matrix {
             data: Vec::new(),
             mvr: Vec::new(),
             cell_restriction: Vec::new(),
+            attributions: 0,
         }
     }
 
     fn set(&mut self, r: u32, c: u32, value: u32) {
-        if r >= self.rows || c >= self.cols {
-            return;
-        }
-
         self.data[(c + r * self.rows) as usize] = value;
+        self.attributions += 1;
     }
 }
 
@@ -59,25 +58,6 @@ impl Futoshiki for Matrix {
         indexes
     }
 
-    fn forward_check(&self, value: u32, blocking_indexes_vec: &Vec<usize>, flag: char) -> bool {
-        if flag == 'a' {
-            return true;
-        }
-
-        for index in blocking_indexes_vec {
-            if self.data[*index] == 0 {
-                continue;
-            }
-
-            let index_mvr = &self.mvr[*index];
-            if index_mvr.contains(&value) && index_mvr.len() == 1 {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
     fn next_index(&self, flag: char) -> Option<(u32, u32)> {
         if flag == 'c' {
             match self.mvr
@@ -100,6 +80,30 @@ impl Futoshiki for Matrix {
                 Some((index / self.rows, index % self.cols))
             }
         }
+    }
+
+    fn forward_check(&self, value: u32, blocking_indexes_vec: &Vec<usize>, flag: char) -> bool {
+        if flag == 'a' {
+            return true;
+        }
+
+        for index in blocking_indexes_vec {
+            if self.data[*index] == 0 {
+                continue;
+            }
+
+            let index_mvr = &self.mvr[*index];
+            if index_mvr.contains(&value) && index_mvr.len() == 1 {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    fn update_mvr(&mut self, index_greater: usize, index_lesser: usize) {
+        let ig_max = *self.mvr[index_greater].iter().max().unwrap();
+        self.mvr[index_lesser].retain(|&x| x < ig_max);
     }
 
     fn can_put_num(&self, r: u32, c: u32, num: u32, blocking_indexes_vec: &Vec<usize>) -> bool {
@@ -136,12 +140,16 @@ impl Futoshiki for Matrix {
             possible_nums = self.mvr[index as usize].clone();
         }
 
+        let mut removed_stack = Vec::new();
         for possible_num in possible_nums {
             let blocking_indexes_vec = self.blocking_indexes(r, c);
             if self.can_put_num(r, c, possible_num, &blocking_indexes_vec) &&
                self.forward_check(possible_num, &blocking_indexes_vec, flag) {
+                if self.attributions > 1000000 {
+                    return false;
+                }
+
                 self.set(r, c, possible_num);
-                let mut removed_stack = Vec::new();
                 if flag == 'c' {
                     for index in &blocking_indexes_vec {
                         if let Some(possible_num_index) = self.mvr[*index]
@@ -163,9 +171,11 @@ impl Futoshiki for Matrix {
                 }
 
                 if flag == 'c' {
-                    for index in removed_stack {
-                        self.mvr[index].push(possible_num);
+                    for index in &removed_stack {
+                        self.mvr[*index].push(possible_num);
                     }
+
+                    removed_stack.clear();
                 }
             }
         }
@@ -241,14 +251,28 @@ fn main() {
             let index1 = (c1 + r1 * matrix_dim) as usize;
             let index2 = (c2 + r2 * matrix_dim) as usize;
 
+            matrix.update_mvr(index2, index1);
+
             let index_max = std::cmp::max(index1, index2);
             let index_min = std::cmp::min(index1, index2);
 
             let old_f1 = matrix.cell_restriction.remove(index_max);
             let old_f2 = matrix.cell_restriction.remove(index_min);
 
-            let index_min_fn = restriction_func(old_f1, index_min, 1);
-            let index_max_fn = restriction_func(old_f2, index_max, -1);
+            let index_min_fn = restriction_func(old_f1,
+                                                index_max,
+                                                if index_max == index2 {
+                                                    1
+                                                } else {
+                                                    -1
+                                                });
+            let index_max_fn = restriction_func(old_f2,
+                                                index_min,
+                                                if index_min == index2 {
+                                                    1
+                                                } else {
+                                                    -1
+                                                });
 
             matrix.cell_restriction.insert(index_min, (1, index_min_fn));
             matrix.cell_restriction.insert(index_max, (1, index_max_fn));
@@ -257,7 +281,10 @@ fn main() {
         // consume \n at the end of each case
         line_or_panic();
 
-        matrix.solve(0, 0, 'c');
+        if !matrix.solve(0, 0, 'c') {
+            println!("Numero de atribuicoes excede o limite");
+            continue;
+        }
         for (i, num) in matrix.data.into_iter().enumerate() {
             if (i as u32) % matrix_dim == 0 && i != 0 {
                 print!("\n");
