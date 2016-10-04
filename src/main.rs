@@ -79,25 +79,25 @@ impl Futoshiki for Matrix {
     }
 
     fn next_index(&self, flag: char) -> Option<(u32, u32)> {
-        if flag != 'c' {
-            match self.data.iter().position(|&x| x == 0) {
-                None => None,
-                Some(index) => {
-                    let index = index as u32;
-                    Some((index / self.rows, index % self.cols))
-                }
-            }
-        } else {
+        if flag == 'c' {
             match self.mvr
                 .iter()
                 .enumerate()
                 .filter(|&(index, _)| self.data[index] == 0)
                 .min_by_key(|&(_, v)| v.len()) {
-                None => None,
+                None => return None,
                 Some((index, _)) => {
                     let index = index as u32;
-                    Some((index / self.rows, index % self.cols))
+                    return Some((index / self.rows, index % self.cols));
                 }
+            }
+        }
+
+        match self.data.iter().position(|&x| x == 0) {
+            None => None,
+            Some(index) => {
+                let index = index as u32;
+                Some((index / self.rows, index % self.cols))
             }
         }
     }
@@ -128,12 +128,9 @@ impl Futoshiki for Matrix {
     }
 
     fn solve(&mut self, r: u32, c: u32, flag: char) -> bool {
-        let mut possible_nums;
+        let possible_nums;
         if flag != 'c' {
-            possible_nums = Vec::new();
-            for i in 1..(self.cols + 1) {
-                possible_nums.push(i);
-            }
+            possible_nums = (1..self.cols + 1).collect();
         } else {
             let index = c + r * self.cols;
             possible_nums = self.mvr[index as usize].clone();
