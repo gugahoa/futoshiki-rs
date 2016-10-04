@@ -79,7 +79,7 @@ impl Futoshiki for Matrix {
     }
 
     fn next_index(&self, flag: char) -> Option<(u32, u32)> {
-        if flag == 'a' {
+        if flag != 'c' {
             match self.data.iter().position(|&x| x == 0) {
                 None => None,
                 Some(index) => {
@@ -129,7 +129,7 @@ impl Futoshiki for Matrix {
 
     fn solve(&mut self, r: u32, c: u32, flag: char) -> bool {
         let mut possible_nums;
-        if flag == 'a' {
+        if flag != 'c' {
             possible_nums = Vec::new();
             for i in 1..(self.cols + 1) {
                 possible_nums.push(i);
