@@ -102,6 +102,7 @@ impl Futoshiki for Matrix {
         return true;
     }
 
+    // TODO: Update lesser lesser, if lesser is greater than another index
     fn update_mvr(&mut self, index_greater: usize, index_lesser: usize) {
         let ig_max = *self.mvr[index_greater].iter().max().unwrap();
         self.mvr[index_lesser].retain(|&x| x < ig_max);
@@ -252,7 +253,7 @@ fn main() {
             let index1 = (c1 + r1 * matrix_dim) as usize;
             let index2 = (c2 + r2 * matrix_dim) as usize;
 
-            matrix.update_mvr(index2, index1);
+            aatrix.update_mvr(index2, index1);
 
             let index_max = std::cmp::max(index1, index2);
             let index_min = std::cmp::min(index1, index2);
