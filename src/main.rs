@@ -3,6 +3,7 @@ use std::io;
 trait Futoshiki {
     fn blocking_indexes(&self, r: u32, c: u32) -> Vec<usize>;
     fn next_index(&self, flag: char) -> Option<(u32, u32)>;
+    fn update_mvr(&mut self, index_greater: usize, index_lesser: usize);
 
     fn forward_check(&self, value: u32, blocking_indexes_vec: &Vec<usize>, flag: char) -> bool;
     fn can_put_num(&self, r: u32, c: u32, num: u32, blocking_indexes_vec: &Vec<usize>) -> bool;
