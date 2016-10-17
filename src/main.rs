@@ -1,9 +1,9 @@
 use std::io;
+use std::env;
 
 trait Futoshiki {
     fn blocking_indexes(&self, r: u32, c: u32) -> Vec<usize>;
     fn next_index(&self, flag: char) -> Option<(u32, u32)>;
-    fn update_mvr(&mut self, index_greater: usize, index_lesser: usize);
 
     fn forward_check(&self, value: u32, blocking_indexes_vec: &Vec<usize>, flag: char) -> bool;
     fn can_put_num(&self, r: u32, c: u32, num: u32, blocking_indexes_vec: &Vec<usize>) -> bool;
@@ -100,12 +100,6 @@ impl Futoshiki for Matrix {
         }
 
         return true;
-    }
-
-    // TODO: Update lesser lesser, if lesser is greater than another index
-    fn update_mvr(&mut self, index_greater: usize, index_lesser: usize) {
-        let ig_max = *self.mvr[index_greater].iter().max().unwrap();
-        self.mvr[index_lesser].retain(|&x| x < ig_max);
     }
 
     fn can_put_num(&self, r: u32, c: u32, num: u32, blocking_indexes_vec: &Vec<usize>) -> bool {
@@ -223,6 +217,12 @@ fn main() {
         line.trim().split(" ").map(|s| s.parse::<u32>().unwrap_or(0)).collect::<Vec<u32>>()
     };
 
+    let flag;
+    match env::var("FLAG") {
+        Ok(val) => flag = val.chars().next().unwrap_or('a'),
+        Err(_) => flag = 'a',
+    }
+
     let n_cases_line = line_or_panic();
     let test_cases = n_cases_line.parse::<u32>().unwrap_or(0);
     println!("{}", n_cases_line);
@@ -253,8 +253,6 @@ fn main() {
             let index1 = (c1 + r1 * matrix_dim) as usize;
             let index2 = (c2 + r2 * matrix_dim) as usize;
 
-            aatrix.update_mvr(index2, index1);
-
             let index_max = std::cmp::max(index1, index2);
             let index_min = std::cmp::min(index1, index2);
 
@@ -283,7 +281,7 @@ fn main() {
         // consume \n at the end of each case
         line_or_panic();
 
-        if !matrix.solve(0, 0, 'c') {
+        if !matrix.solve(0, 0, flag) {
             println!("Numero de atribuicoes excede o limite");
             continue;
         }
