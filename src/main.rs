@@ -1,3 +1,4 @@
+use std::time::Instant;
 use std::io;
 use std::env;
 
@@ -281,10 +282,14 @@ fn main() {
         // consume \n at the end of each case
         line_or_panic();
 
+        let now = Instant::now();
         if !matrix.solve(0, 0, flag) {
             println!("Numero de atribuicoes excede o limite");
+            println!("{}\n", now.elapsed().subsec_nanos());
             continue;
         }
+        println!("{}", now.elapsed().subsec_nanos());
+
         for (i, num) in matrix.data.into_iter().enumerate() {
             if (i as u32) % matrix_dim == 0 && i != 0 {
                 print!("\n");
